@@ -1,27 +1,23 @@
-
-
 /********************* Includes ***************************/
 #include <IRremote.h>
-#include <LiquidCrystal_I2C.h>
-#include <Wire.h>
-#include "Arduino.h"
-#include "led.h"
-#include "bell.h"
-#include "screen.h"
-#include "AirCondition.h"
-//tru comment
+#include <EEPROM.h>
 
 /*********************Constants*********************************/
 
 #define LCD_DELAY_TIME 5000
-
+#define JOYSTICK_RIGHT_THRSHOLD 800
+#define JOYSTICK_LEFT_THRSHOLD 200
+#define JOYSTICK_UP_THRSHOLD 800
+#define JOYSTICK_DOWN_THRSHOLD 200
 /*********************Ports*********************************/
-#define X_PIN A0                //Naming all the used PINs
-#define Y_PIN A1
+/*X Y are oposite than what written on the joystick cause that is how it makes sense with the axis direction*/
+#define X_PIN A1                //Naming all the used PINs
+#define Y_PIN A0
 #define BUZZER 7
-#define IR_RECEIVE_PIN 11
+//#define IR_RECEIVE_PIN 11
 #define PUSH_BUTTON 12
-
+#define DEBUG 1
+#define FUNC_TAGS 1
 
 /****************Variables*********************************/
 unsigned long lastTime = 0;
@@ -51,65 +47,91 @@ int get_free_memory()
 //***************- Setup *********************************//
 void setup() {
 
+
+  Serial.begin(9600);
+
+#if DEBUG==1 && FUNC_TAGS==1
+  // Serial.begin(115200);
+  Serial.println(F("***ComplexArduinoCode.setup - begin"));
+#endif
   //initLcd();    //Initializing the lcd screen
   beep(2);    //A beep to let the user know the system is up
 
   pinMode(PUSH_BUTTON, INPUT);
- Serial.begin(9600);
-  //Setup all the parts of the files
-  l.SETUP();    // Setup for the led
-  b.SETUP();    // Setup for the bell
-  Serial.print(F("Free memory "));
-  Serial.println(get_free_memory(), DEC);
-  
-  
-  s.SETUP();
-  
-  
-  ac.SETUP();
-  delay(3);
-
-  Serial.print(F("Free memory "));
-  Serial.println(get_free_memory(), DEC);
+  pinMode(BUZZER, OUTPUT);
+  /*#if DEBUG==1
+    Serial.print(F("Free memory "));
+    Serial.println(get_free_memory(), DEC);
+    Serial.print(F("Free memory "));
+    Serial.println(get_free_memory(), DEC);
+    #endif*/
+  setupEEPROM();
+  setupLcd();
+  setupAirCondition();
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.setup - end"));
+#endif
 }
-
 //****************Main Code *********************************//
 
 void up() {
-  b.buzz(8);
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.up - begin"));
+#endif
+
+  // b.buzz(3);
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.up - end"));
+#endif
 }
 
 void right() {
-  ac.turnOn();
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.right - begin"));
+#endif
+  turnAC(1);
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.right - end"));
+#endif
 }
 
 void down() {
-  l.blink(6);
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.down - begin"));
+#endif
+  //turnAC(1);
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.down - end"));
+#endif
 }
 
 void left() {
-  ac.turnOff();
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.left - begin"));
+#endif
+  turnAC(0);
+#if DEBUG==1 && FUNC_TAGS==1
+  Serial.println(F("***ComplexArduinoCode.left - end"));
+#endif
 }
 
 void loop()
 {
-
+  if (!Serial) {
+    Serial.begin(115200);
+  }
   /*dealing with the setup button*/
   if (digitalRead(PUSH_BUTTON) == 1) {
     lastTime = currentTime;
     while (millis() - lastTime < 3000 && digitalRead(PUSH_BUTTON) == 1) {
     }
     if (digitalRead(PUSH_BUTTON) == 1) {
-      s.writeLcd("SETUP MODE");
+      writeLcd("SETUP MODE");
       beep(6);//su mode
-      ac.editCommand();
       setupMode = true;
-      //end setup
-      delay(4000);
-      s.writeLcd("SETUP End");
-      delay(5000);
+      editCommand();
+      writeLcd("SETUP End");
       setupMode = false;
-
     } else {
       //go away
     }
@@ -118,41 +140,50 @@ void loop()
   /*lcd screen sve power mode*/
   currentTime = millis();
   if (currentTime - lastTime >= LCD_DELAY_TIME && !setupMode) {
-    s.screenSleep();
+    sleepLcd();
+    currentDirection = 'N';
   }
 
 
   /*Joystick deal with*/
   xData = analogRead(X_PIN);   //TODO  - mapping the analog value to 8/16/32 bit https://www.arduino.cc/reference/en/language/functions/math/map/
   yData = analogRead(Y_PIN);
+#if DEBUG==1
+  /*Serial.print(F("("));
+    Serial.print(xData);
+    Serial.print(F(","));
+    Serial.print(yData);
+    Serial.println(F(")"));*/
+#endif
 
-  if (xData > 800 && currentDirection != 'R') {
-    lastTime = currentTime;
-    beep(2);
-    currentDirection = 'R';
-    s.writeLcd("Right");
-    right();
+  if (!setupMode) {     //Check the Joystick status only if you are not in setup mode
+    if (xData > JOYSTICK_RIGHT_THRSHOLD /*&& xData > yData*/ && currentDirection != 'R') {
+      lastTime = currentTime;
+      beep(2);
+      currentDirection = 'R';
+      writeLcd("Right");
+      right();
+    }
+    else if (xData < JOYSTICK_LEFT_THRSHOLD /*&& xData < yData*/ && currentDirection != 'L') {
+      lastTime = currentTime;
+      beep(2);
+      currentDirection = 'L';
+      writeLcd("Left");
+      left();
+    }
+    else if (yData > JOYSTICK_UP_THRSHOLD /*&& yData > xData*/ && currentDirection != 'U') {
+      lastTime = currentTime;
+      beep(2);
+      currentDirection = 'U';
+      writeLcd("Up");
+      up();
+    }
+    else if (yData < JOYSTICK_DOWN_THRSHOLD /*&& yData < xData*/ && currentDirection != 'D') {
+      lastTime = currentTime;
+      beep(2);
+      currentDirection = 'D';
+      writeLcd("Down");
+      down();
+    }
   }
-  else if (xData < 200 && currentDirection != 'L') {
-    lastTime = currentTime;
-    beep(2);
-    currentDirection = 'L';
-    s.writeLcd("Left");
-    left();
-  }
-  else if (yData < 200 && currentDirection != 'U') {
-    lastTime = currentTime;
-    beep(2);
-    currentDirection = 'U';
-    s.writeLcd("Up");
-    up();
-  }
-  else if (yData > 800 && currentDirection != 'D') {
-    lastTime = currentTime;
-    beep(2);
-    currentDirection = 'D';
-    s.writeLcd("Down");
-    down();
-  }
-  currentDirection != 'N';
 }

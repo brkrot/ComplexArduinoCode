@@ -90,5 +90,8 @@ typedef void *__builtin_va_list;
 #define pgm_read_ptr(address_short)   short()
 
 #include "ComplexArduinoCode.ino"
+#include "AirConditionHelper.ino"
+#include "acReciveHelper.ino"
+#include "screenHelper.ino"
 #endif
 #endif
